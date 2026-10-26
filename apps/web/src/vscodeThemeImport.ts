@@ -385,16 +385,22 @@ export function pairVsCodeThemes(
       .replace(/\s+/g, " ")
       .trim();
 
-  type Group = { light: ThemeDefinition[]; dark: ThemeDefinition[]; order: number };
+  type Group = { label: string; light: ThemeDefinition[]; dark: ThemeDefinition[]; order: number };
   const groups = new Map<string, Group>();
   const passthrough: Array<{ theme: ThemeDefinition; order: number }> = [];
   themes.forEach((theme, order) => {
-    const key = stripAppearance(theme.label);
-    if (getThemeModes(theme).length !== 1 || key === theme.label || !/[a-z0-9]/i.test(key)) {
+    const label = stripAppearance(theme.label);
+    if (getThemeModes(theme).length !== 1 || label === theme.label || !/[a-z0-9]/i.test(label)) {
       passthrough.push({ theme, order });
       return;
     }
-    const group = groups.get(key) ?? { light: [], dark: [], order };
+    const key = themeIdFromName(label);
+    const group = groups.get(key) ?? {
+      label: label.replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim(),
+      light: [],
+      dark: [],
+      order,
+    };
     group[theme.appearance].push(theme);
     groups.set(key, group);
   });
@@ -408,12 +414,7 @@ export function pairVsCodeThemes(
           theme: parseThemeFile({
             version: THEME_FILE_VERSION,
             ...(options?.pairedId ? { id: options.pairedId(group.light[0]!, group.dark[0]!) } : {}),
-            name: stripAppearance(
-              group.light[0]!.label.replace(
-                /\(\s*(?:light|dark)\s*\)|\[\s*(?:light|dark)\s*\]|\{\s*(?:light|dark)\s*\}/gi,
-                " ",
-              ),
-            ),
+            name: group.label,
             appearance: "light",
             colors: group.light[0]!.colors,
             variants: { dark: group.dark[0]!.colors },

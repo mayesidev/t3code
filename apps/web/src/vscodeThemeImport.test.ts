@@ -413,7 +413,7 @@ describe("VS Code theme import", () => {
     expect(getThemeColorsForMode(themes[2]!, "light")).toBeNull();
   });
 
-  describe("paired theme labels", () => {
+  describe("paired theme identity", () => {
     const make = (name: string, type: "light" | "dark") =>
       parseVsCodeThemeFile({
         name,
@@ -423,70 +423,77 @@ describe("VS Code theme import", () => {
 
     it.each([
       ["Solarized (dark)", "Solarized (light)"],
-      ["Solarized [dark]", "Solarized [light]"],
-      ["Solarized {dark}", "Solarized {light}"],
-      ["Solarized ( DARK )", "Solarized ( LIGHT )"],
-    ])("removes mode-only wrappers when pairing %s", (darkName, lightName) => {
+      ["Solarized [dark]", "Solarized {light}"],
+      ["Solarized ( DARK )", "Solarized Light"],
+      ["Solarized - Dark", "Solarized: Light"],
+      ["Solarized Dark", "solarized Light"],
+    ])("uses the same family identity when pairing %s", (darkName, lightName) => {
       const themes = pairVsCodeThemes([make(darkName, "dark"), make(lightName, "light")]);
+      const unpaired = make("Solarized", "light");
 
       expect(themes).toHaveLength(1);
       const theme = themes[0]!;
-      expect(theme.label).toBe("Solarized");
-      expect(theme.id).toBe("solarized");
+      expect(theme.label).toBe(unpaired.label);
+      expect(theme.id).toBe(unpaired.id);
       expect(asHex(getThemeColorsForMode(theme, "dark")!.canvas)).toBe("#002b36");
       expect(asHex(getThemeColorsForMode(theme, "light")!.canvas)).toBe("#fdf6e3");
     });
 
     it.each([
-      ["Solarized (Soft) (Dark)", "Solarized (Soft) (Light)", "Solarized (Soft)"],
-      ["Solarized [Soft] [Dark]", "Solarized [Soft] [Light]", "Solarized [Soft]"],
-      ["Solarized {Soft} {Dark}", "Solarized {Soft} {Light}", "Solarized {Soft}"],
-      ["Solarized () Dark", "Solarized () Light", "Solarized ()"],
-      ["Solarized [] Dark", "Solarized [] Light", "Solarized []"],
-      ["Solarized {} Dark", "Solarized {} Light", "Solarized {}"],
-      ["Solarized - Dark", "Solarized - Light", "Solarized -"],
-      ["Solarized: Dark", "Solarized: Light", "Solarized:"],
-      ["Solarized (Dark Soft)", "Solarized (Light Soft)", "Solarized ( Soft)"],
-      ["Solarized (Dark]", "Solarized (Light]", "Solarized ( ]"],
-    ])("preserves other punctuation when pairing %s", (darkName, lightName, label) => {
+      ["GitHub (Soft) Dark", "github soft Light", "GitHub Soft", "github-soft"],
+      ["VS Code [Dark]", "vs code Light", "VS Code", "vs-code"],
+      ["Café (dark)", "Café Light", "Café", "caf"],
+      ["Solarized (Dark Soft)", "Solarized Light Soft", "Solarized Soft", "solarized-soft"],
+      ["Solarized () Dark", "Solarized Light", "Solarized", "solarized"],
+      ["C++ Dark", "C# Light", "C", "c"],
+    ])("keeps readable words and capitalization from %s", (darkName, lightName, label, id) => {
       const themes = pairVsCodeThemes([make(darkName, "dark"), make(lightName, "light")]);
 
-      expect(themes.map((theme) => theme.label)).toEqual([label]);
+      expect(themes.map((theme) => [theme.id, theme.label])).toEqual([[id, label]]);
     });
 
-    it("leaves unmatched and ambiguous families unchanged", () => {
-      const themes = [
-        make("Solarized (dark)", "dark"),
-        make("Solarized (DARK)", "dark"),
-        make("Solarized (light)", "light"),
-        make("Unmatched [dark]", "dark"),
-      ];
-      const paired = pairVsCodeThemes(themes);
+    it.each(["dark", "light"] as const)(
+      "does not choose between multiple %s candidates in a normalized family",
+      (mode) => {
+        const otherMode = mode === "dark" ? "light" : "dark";
+        const themes = [
+          make(`Solarized (${mode})`, mode),
+          make(`solarized [${mode}]`, mode),
+          make(`Solarized ${otherMode}`, otherMode),
+        ];
+        const paired = pairVsCodeThemes(themes);
 
-      expect(paired).toHaveLength(themes.length);
-      expect(paired).toEqual(expect.arrayContaining(themes));
-    });
+        expect(paired).toHaveLength(themes.length);
+        expect(paired).toEqual(expect.arrayContaining(themes));
+      },
+    );
 
-    it("does not introduce matches between different wrappers", () => {
-      const themes = [make("Solarized (dark)", "dark"), make("Solarized [light]", "light")];
+    it("does not pair punctuation-equivalent names without appearance words", () => {
+      const themes = [make("C++", "dark"), make("C#", "light")];
 
       expect(pairVsCodeThemes(themes)).toEqual(themes);
     });
 
-    it("keeps wrapped and unwrapped families separate", () => {
-      const themes = pairVsCodeThemes([
-        make("Solarized (dark)", "dark"),
-        make("Solarized (light)", "light"),
+    it("keeps families with different qualifiers separate", () => {
+      const themes = [make("Solarized Soft Dark", "dark"), make("Solarized Hard Light", "light")];
+
+      expect(pairVsCodeThemes(themes)).toEqual(themes);
+    });
+
+    it("preserves unmatched and already paired themes", () => {
+      const unmatched = make("Unmatched (dark)", "dark");
+      const [paired] = pairVsCodeThemes([
         make("Solarized Dark", "dark"),
         make("Solarized Light", "light"),
       ]);
+      const themes = [unmatched, paired!];
 
-      expect(themes.map((theme) => theme.label)).toEqual(["Solarized", "Solarized"]);
+      expect(pairVsCodeThemes(themes)).toEqual(themes);
     });
 
     it("preserves an explicitly supplied paired id", () => {
       const themes = pairVsCodeThemes(
-        [make("Solarized (dark)", "dark"), make("Solarized (light)", "light")],
+        [make("Solarized (dark)", "dark"), make("Solarized Light", "light")],
         { pairedId: () => "extension-solarized" },
       );
 
